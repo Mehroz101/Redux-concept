@@ -1,115 +1,142 @@
-# Mastering Redux Toolkit + RTK Query in Next.js 🚀
 
-This README is your go-to documentation for building scalable, maintainable, and efficient data flows in Next.js using Redux Toolkit, RTK Query, and Axios with full token-based authentication.
+## 📘 **PHASE 1: Redux Toolkit Basics (`createSlice`, `configureStore`, `useSelector`, `useDispatch`)**
 
----
-
-## 📌 PHASE 1: Redux Basics 🔁
-
-### Core Concepts:
-
-* `createSlice` – For modular state logic
-* `configureStore` – For setting up the Redux store
-* `useSelector`, `useDispatch` – For accessing state and dispatching actions
-
-### Code Example:
+### File: `features/counterSlice.ts`
 
 ```ts
-// features/counter/counterSlice.ts
-import { createSlice } from '@reduxjs/toolkit';
+import { createSlice, PayloadAction } from '@reduxjs/toolkit';
+
+interface CounterState {
+  value: number;
+}
+
+const initialState: CounterState = {
+  value: 0,
+};
 
 const counterSlice = createSlice({
   name: 'counter',
-  initialState: { value: 0 },
+  initialState,
   reducers: {
-    increment: (state) => { state.value += 1; },
-    decrement: (state) => { state.value -= 1; },
+    increment: (state) => {
+      state.value += 1; // directly mutating state with Immer
+    },
+    decrement: (state) => {
+      state.value -= 1;
+    },
+    incrementByAmount: (state, action: PayloadAction<number>) => {
+      state.value += action.payload;
+    },
   },
 });
 
-export const { increment, decrement } = counterSlice.actions;
+export const { increment, decrement, incrementByAmount } = counterSlice.actions;
 export default counterSlice.reducer;
 ```
 
+#### 🔍 Line-by-Line Breakdown:
+
+* `createSlice`: Creates a Redux slice with actions and reducer in one place.
+* `PayloadAction`: Type helper to define the expected payload type.
+* `initialState`: Base state of the counter.
+* Reducers:
+
+  * `increment`: Adds `1` to the counter.
+  * `decrement`: Subtracts `1`.
+  * `incrementByAmount`: Dynamically increases the value by any number.
+
+---
+
+### File: `store.ts`
+
 ```ts
-// store.ts
 import { configureStore } from '@reduxjs/toolkit';
-import counterReducer from './features/counter/counterSlice';
+import counterReducer from './features/counterSlice';
 
 export const store = configureStore({
-  reducer: { counter: counterReducer },
+  reducer: {
+    counter: counterReducer,
+  },
 });
+
+export type RootState = ReturnType<typeof store.getState>;
+export type AppDispatch = typeof store.dispatch;
 ```
 
-```ts
-// _app.tsx
-import { Provider } from 'react-redux';
-import { store } from '../store';
+#### 🔍 Line-by-Line Breakdown:
 
-function MyApp({ Component, pageProps }) {
-  return (
-    <Provider store={store}>
-      <Component {...pageProps} />
-    </Provider>
-  );
-}
-```
+* `configureStore`: Initializes the store with middleware & dev tools.
+* `RootState`: Infers the state type.
+* `AppDispatch`: Typing for dispatching actions.
 
-```ts
-// Usage in component
+---
+
+### Usage in Component:
+
+```tsx
 import { useSelector, useDispatch } from 'react-redux';
-import { increment } from '@/features/counter/counterSlice';
+import { increment, decrement } from './features/counterSlice';
 
-const Counter = () => {
-  const count = useSelector((state) => state.counter.value);
-  const dispatch = useDispatch();
+const CounterComponent = () => {
+  const count = useSelector((state: RootState) => state.counter.value);
+  const dispatch = useDispatch<AppDispatch>();
 
-  return <button onClick={() => dispatch(increment())}>Increment ({count})</button>;
+  return (
+    <>
+      <h1>{count}</h1>
+      <button onClick={() => dispatch(increment())}>+</button>
+      <button onClick={() => dispatch(decrement())}>-</button>
+    </>
+  );
 };
 ```
 
 ---
 
-## 📌 PHASE 2: RTK Query 🔄
+## 📘 **PHASE 2: RTK Query (`createApi`, `builder.query/mutation`, `tagTypes`)**
 
-### Core Concepts:
-
-* `createApi`
-* `builder.query()` and `builder.mutation()`
-* `tagTypes`, `providesTags`, `invalidatesTags`
-
-### Code Example:
+### File: `services/blogApi.ts`
 
 ```ts
-// services/blogApi.ts
 import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
 
 export const blogApi = createApi({
   reducerPath: 'blogApi',
-  baseQuery: fetchBaseQuery({ baseUrl: '/api' }),
+  baseQuery: fetchBaseQuery({ baseUrl: '/api/' }),
   tagTypes: ['Blog'],
   endpoints: (builder) => ({
-    getBlogs: builder.query({
-      query: () => '/blogs',
+    getBlogs: builder.query<Blog[], void>({
+      query: () => 'blogs',
       providesTags: ['Blog'],
     }),
-    addBlog: builder.mutation({
-      query: (newBlog) => ({
-        url: '/blogs',
+    createBlog: builder.mutation<void, Blog>({
+      query: (blog) => ({
+        url: 'blogs',
         method: 'POST',
-        body: newBlog,
+        body: blog,
       }),
       invalidatesTags: ['Blog'],
     }),
   }),
 });
 
-export const { useGetBlogsQuery, useAddBlogMutation } = blogApi;
+export const { useGetBlogsQuery, useCreateBlogMutation } = blogApi;
 ```
 
+#### 🔍 Line-by-Line Breakdown:
+
+* `createApi`: Initializes RTK Query API service.
+* `reducerPath`: Unique name for reducer slice.
+* `tagTypes`: Enables caching and invalidation.
+* `getBlogs`: Query to fetch data.
+* `createBlog`: Mutation to add blog & invalidate cache.
+* Hooks like `useGetBlogsQuery()` are auto-generated.
+
+---
+
+### Store Integration:
+
 ```ts
-// store.ts
-import { configureStore } from '@reduxjs/toolkit';
 import { blogApi } from './services/blogApi';
 
 export const store = configureStore({
@@ -121,53 +148,32 @@ export const store = configureStore({
 });
 ```
 
-```ts
-// Component.tsx
-const BlogList = () => {
-  const { data, isLoading } = useGetBlogsQuery();
-  const [addBlog] = useAddBlogMutation();
-
-  return (
-    <div>
-      {data?.map((blog) => <p key={blog.id}>{blog.title}</p>)}
-      <button onClick={() => addBlog({ title: 'New Post' })}>Add Blog</button>
-    </div>
-  );
-};
-```
-
 ---
 
-## 📌 PHASE 3: Axios + Token Logic 🔐
+## 📘 **PHASE 3: Axios + Token Logic (`axiosInstance`, `interceptors`, `refresh`)**
 
-### Core Concepts:
-
-* `axiosInstance` for centralizing API logic
-* Request/response interceptors for injecting tokens and handling expiration
-
-### Code Example:
+### File: `utils/axiosInstance.ts`
 
 ```ts
-// utils/axiosInstance.ts
 import axios from 'axios';
 
 const axiosInstance = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL,
+  baseURL: 'https://api.example.com',
 });
 
-// Request Interceptor
 axiosInstance.interceptors.request.use((config) => {
-  const token = localStorage.getItem('access_token');
-  if (token) config.headers.Authorization = `Bearer ${token}`;
+  const token = localStorage.getItem('accessToken');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
   return config;
 });
 
-// Response Interceptor
 axiosInstance.interceptors.response.use(
-  (res) => res,
+  (response) => response,
   async (error) => {
-    if (error.response?.status === 401) {
-      // TODO: Refresh token logic here
+    if (error.response.status === 401) {
+      // Logic to refresh token and retry
     }
     return Promise.reject(error);
   }
@@ -176,45 +182,63 @@ axiosInstance.interceptors.response.use(
 export default axiosInstance;
 ```
 
+#### 🔍 Breakdown:
+
+* `axios.create`: Configures global instance.
+* Request Interceptor: Adds token to header.
+* Response Interceptor: Handles token expiry and retry logic.
+
 ---
 
-## 📌 PHASE 4: Integration 🔧
+## 📘 **PHASE 4: Integration (`baseApi`, `axiosBaseQuery`, real data flow)**
 
-### Core Concepts:
-
-* Replacing `fetchBaseQuery` with custom `axiosBaseQuery`
-* Unified token injection and refresh logic
-
-### Code Example:
+### File: `services/baseQuery.ts`
 
 ```ts
-// utils/axiosBaseQuery.ts
-import type { BaseQueryFn } from '@reduxjs/toolkit/query';
-import axios from 'axios';
+import axiosInstance from '../utils/axiosInstance';
 
-export const axiosBaseQuery = ({ baseUrl }: { baseUrl: string }): BaseQueryFn => async ({ url, method, data }) => {
-  try {
-    const result = await axios({ url: baseUrl + url, method, data });
-    return { data: result.data };
-  } catch (axiosError: any) {
-    return { error: axiosError.response?.data || axiosError.message };
-  }
-};
+export const axiosBaseQuery =
+  ({ baseUrl = '' } = {}) =>
+  async ({ url, method, data, params }) => {
+    try {
+      const result = await axiosInstance({
+        url: baseUrl + url,
+        method,
+        data,
+        params,
+      });
+      return { data: result.data };
+    } catch (axiosError) {
+      return {
+        error: {
+          status: axiosError.response?.status,
+          data: axiosError.response?.data,
+        },
+      };
+    }
+  };
 ```
 
-```ts
-// services/api.ts
-import { createApi } from '@reduxjs/toolkit/query/react';
-import { axiosBaseQuery } from '@/utils/axiosBaseQuery';
+---
 
-export const baseApi = createApi({
-  reducerPath: 'baseApi',
-  baseQuery: axiosBaseQuery({ baseUrl: '/api' }),
-  tagTypes: ['Blog'],
+### Updated `blogApi.ts` to Use Axios:
+
+```ts
+import { createApi } from '@reduxjs/toolkit/query/react';
+import { axiosBaseQuery } from './baseQuery';
+
+export const blogApi = createApi({
+  baseQuery: axiosBaseQuery({ baseUrl: '/api/' }),
   endpoints: (builder) => ({
-    getBlogs: builder.query({
-      query: () => ({ url: '/blogs', method: 'GET' }),
-      providesTags: ['Blog'],
+    getBlogs: builder.query<Blog[], void>({
+      query: () => ({ url: 'blogs', method: 'GET' }),
+    }),
+    createBlog: builder.mutation<void, Blog>({
+      query: (blog) => ({
+        url: 'blogs',
+        method: 'POST',
+        data: blog,
+      }),
     }),
   }),
 });
@@ -222,43 +246,49 @@ export const baseApi = createApi({
 
 ---
 
-## 📌 PHASE 5: Advanced Concepts 🚀
+## 📘 **PHASE 5: Advanced Concepts (`Optimistic Updates`, `Caching`, `SSR`, `Performance`)**
 
-### Core Concepts:
-
-* **Optimistic Updates**: Immediately reflect changes in UI
-* **Caching & Invalidation**: Invalidate and re-fetch on demand
-* **SSR Compatibility**: Hydrate data server-side with `getServerSideProps`
-* **Performance**: Prefetching, polling, and cache optimization
-
-### Code Example (Optimistic Update):
+### Optimistic Updates
 
 ```ts
-addBlog: builder.mutation({
+createBlog: builder.mutation({
   query: (blog) => ({
-    url: '/blogs',
+    url: 'blogs',
     method: 'POST',
     data: blog,
   }),
   async onQueryStarted(blog, { dispatch, queryFulfilled }) {
     const patchResult = dispatch(
-      baseApi.util.updateQueryData('getBlogs', undefined, (draft) => {
+      blogApi.util.updateQueryData('getBlogs', undefined, (draft) => {
         draft.push(blog);
       })
     );
     try {
       await queryFulfilled;
     } catch {
-      patchResult.undo();
+      patchResult.undo(); // rollback if failed
     }
   },
-}),
+});
 ```
 
 ---
 
-## ✅ Conclusion
+### SSR Support in Next.js
 
-This roadmap provides a production-ready setup that brings Redux Toolkit, RTK Query, and Axios together in a scalable architecture. Each phase builds logically toward a robust solution with authentication, dynamic caching, and advanced performance optimization.
+Use `HYDRATE` from `next-redux-wrapper` and `getServerSideProps()` to prefetch data server-side. You’ll use the `initStore` pattern and `makeStore` from Redux Toolkit to configure hydration.
 
-Make sure to experiment and adapt these tools based on the specific needs of your application.
+---
+
+### Caching
+
+RTK Query handles caching automatically using `tagTypes` and `providesTags`/`invalidatesTags`. Keep your endpoints lean and focused on consistent tags to maintain cache integrity.
+
+---
+
+### Performance Tips
+
+* Use `selectFromResult` to minimize rerenders.
+* Memoize large components with `React.memo`.
+* Only invalidate tags when necessary.
+
